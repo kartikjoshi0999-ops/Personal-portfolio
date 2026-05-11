@@ -1,0 +1,63 @@
+# Dependencies
+node_modules
+.pnp
+.pnp.js
+
+# Build outputs
+.next
+dist
+build
+out
+.expo
+.turbo
+
+# Testing
+coverage
+.nyc_output
+
+# Environment
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Prisma
+packages/api/prisma/migrations/*.lock
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# Expo
+apps/mobile/.expo
+apps/mobile/expo-env.d.ts
+apps/mobile/android
+apps/mobile/ios
+apps/mobile/web-build
+
+# Vercel
+.vercel
+
+# TypeScript
+*.tsbuildinfo
+
+# Cache
+.cache
+.parcel-cache
+
+# Misc
+*.pem
+.env*.local
