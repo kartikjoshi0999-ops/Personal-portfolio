@@ -1,0 +1,848 @@
+// ═══════════════════════════════════════════════════════════════
+// SolveSphere AI — Prisma Schema
+// Database: PostgreSQL (Supabase)
+// ═══════════════════════════════════════════════════════════════
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["multiSchema"]
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ──────────────────────────────────────
+// ENUMS
+// ──────────────────────────────────────
+
+enum SubscriptionTier {
+  FREE
+  PRO
+  LIFETIME
+}
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+enum UseCase {
+  STUDENT
+  PROFESSIONAL
+  INVESTOR
+  ALL
+}
+
+enum RiskProfile {
+  CONSERVATIVE
+  MODERATE
+  AGGRESSIVE
+}
+
+enum Currency {
+  USD
+  CAD
+  EUR
+  GBP
+  AUD
+  JPY
+  CHF
+  INR
+}
+
+enum TransactionType {
+  INCOME
+  EXPENSE
+  TRANSFER
+}
+
+enum TransactionCategory {
+  FOOD_DINING
+  TRANSPORT
+  RENT_MORTGAGE
+  UTILITIES
+  HEALTHCARE
+  ENTERTAINMENT
+  SHOPPING
+  EDUCATION
+  TRAVEL
+  PERSONAL_CARE
+  INVESTMENTS
+  SAVINGS
+  INSURANCE
+  TAXES
+  SUBSCRIPTIONS
+  GIFTS_DONATIONS
+  BUSINESS
+  INCOME_SALARY
+  INCOME_FREELANCE
+  INCOME_DIVIDENDS
+  INCOME_OTHER
+  TRANSFER
+  OTHER
+}
+
+enum AccountType {
+  CHECKING
+  SAVINGS
+  CREDIT_CARD
+  INVESTMENT
+  CRYPTO
+  LOAN
+  MORTGAGE
+  OTHER
+}
+
+enum AssetClass {
+  STOCK
+  ETF
+  MUTUAL_FUND
+  BOND
+  CRYPTO
+  REAL_ESTATE
+  COMMODITY
+  CASH
+  OTHER
+}
+
+enum GoalType {
+  EMERGENCY_FUND
+  DOWN_PAYMENT
+  RETIREMENT
+  VACATION
+  EDUCATION
+  VEHICLE
+  WEDDING
+  BUSINESS
+  DEBT_PAYOFF
+  CUSTOM
+}
+
+enum DebtType {
+  CREDIT_CARD
+  STUDENT_LOAN
+  AUTO_LOAN
+  PERSONAL_LOAN
+  MORTGAGE
+  MEDICAL
+  OTHER
+}
+
+enum DebtStrategy {
+  SNOWBALL
+  AVALANCHE
+}
+
+enum MathSubject {
+  ARITHMETIC
+  ALGEBRA
+  CALCULUS
+  TRIGONOMETRY
+  STATISTICS
+  LINEAR_ALGEBRA
+  DIFFERENTIAL_EQUATIONS
+  COMPLEX_NUMBERS
+  MATRICES
+  NUMBER_THEORY
+  GEOMETRY
+  OTHER
+}
+
+enum AlertType {
+  PRICE_TARGET
+  PERCENT_CHANGE
+  VOLUME_SPIKE
+}
+
+enum NotificationChannel {
+  PUSH
+  EMAIL
+  IN_APP
+}
+
+// ──────────────────────────────────────
+// AUTH / USER CORE
+// ──────────────────────────────────────
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Supabase auth UUID mirrors this id
+  supabaseId String? @unique
+
+  profile           UserProfile?
+  subscription      Subscription?
+  mathProblems      MathProblem[]
+  accounts          FinancialAccount[]
+  transactions      Transaction[]
+  budgets           Budget[]
+  portfolios        Portfolio[]
+  watchlists        Watchlist[]
+  goals             SavingsGoal[]
+  debts             Debt[]
+  notifications     Notification[]
+  aiConversations   AIConversation[]
+  statDatasets      StatDataset[]
+  priceAlerts       PriceAlert[]
+  plaidItems        PlaidItem[]
+  receipts          Receipt[]
+  taxProfiles       TaxProfile[]
+
+  @@index([email])
+  @@map("users")
+}
+
+model UserProfile {
+  id           String      @id @default(uuid())
+  userId       String      @unique
+  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  displayName  String?
+  avatarUrl    String?
+  useCase      UseCase     @default(ALL)
+  riskProfile  RiskProfile @default(MODERATE)
+  currency     Currency    @default(USD)
+  country      String      @default("US")   // ISO 3166-1 alpha-2
+  timezone     String      @default("America/New_York")
+
+  // Feature flags / onboarding
+  onboardingCompleted Boolean @default(false)
+  biometricEnabled    Boolean @default(false)
+  darkMode            Boolean @default(false)
+
+  // Scan usage for free tier
+  mathScansToday   Int      @default(0)
+  scanResetDate    DateTime @default(now())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("user_profiles")
+}
+
+// ──────────────────────────────────────
+// SUBSCRIPTIONS / BILLING
+// ──────────────────────────────────────
+
+model Subscription {
+  id     String @id @default(uuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  tier              SubscriptionTier @default(FREE)
+  stripeCustomerId  String?          @unique
+  stripeSubId       String?          @unique
+  stripePriceId     String?
+  status            String?          // active | past_due | canceled | trialing
+  currentPeriodEnd  DateTime?
+  cancelAtPeriodEnd Boolean          @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("subscriptions")
+}
+
+// ──────────────────────────────────────
+// MATH SOLVER
+// ──────────────────────────────────────
+
+model MathProblem {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  imageUrl     String?            // Supabase Storage URL
+  rawText      String?            // OCR raw output
+  latex        String             // Mathpix LaTeX
+  subject      MathSubject        @default(OTHER)
+  tags         String[]           @default([])
+
+  // Claude solution
+  solutionSteps Json              // Step[]  { step: number, expression: string, rule: string, explanation: string }
+  finalAnswer   String
+  graphData     Json?             // Plotly/Desmos config if applicable
+
+  // Metadata
+  difficulty    Int?              // 1–5 user rating
+  isFavorited   Boolean           @default(false)
+  solveTimeMs   Int?              // OCR + AI latency
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, createdAt])
+  @@index([userId, subject])
+  @@map("math_problems")
+}
+
+// ──────────────────────────────────────
+// STATISTICS MODULE
+// ──────────────────────────────────────
+
+model StatDataset {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name        String
+  description String?
+  columns     Json      // string[]
+  rows        Json      // number[][]
+  sourceType  String    @default("manual")  // manual | csv | photo
+
+  // Computed results (cached)
+  descriptive Json?     // DescriptiveStats
+  analyses    StatAnalysis[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@map("stat_datasets")
+}
+
+model StatAnalysis {
+  id        String      @id @default(uuid())
+  datasetId String
+  dataset   StatDataset @relation(fields: [datasetId], references: [id], onDelete: Cascade)
+
+  analysisType String    // t-test | anova | chi-square | regression | correlation
+  config       Json      // analysis parameters
+  results      Json      // full output
+  interpretation String? // plain-English from Claude
+
+  createdAt DateTime @default(now())
+
+  @@index([datasetId])
+  @@map("stat_analyses")
+}
+
+// ──────────────────────────────────────
+// FINANCIAL ACCOUNTS
+// ──────────────────────────────────────
+
+model PlaidItem {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  plaidItemId      String  @unique
+  plaidAccessToken String  // encrypted AES-256
+  institutionId    String?
+  institutionName  String?
+  cursor           String? // pagination cursor for /transactions/sync
+  lastSynced       DateTime?
+
+  accounts FinancialAccount[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@map("plaid_items")
+}
+
+model FinancialAccount {
+  id          String  @id @default(uuid())
+  userId      String
+  user        User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plaidItemId String?
+  plaidItem   PlaidItem? @relation(fields: [plaidItemId], references: [id])
+
+  plaidAccountId String?  @unique
+  name           String
+  officialName   String?
+  type           AccountType
+  subtype        String?
+  mask           String?   // last 4 digits
+  currency       Currency  @default(USD)
+
+  // Balances (synced from Plaid or manual)
+  currentBalance  Decimal  @db.Decimal(15, 4)
+  availableBalance Decimal? @db.Decimal(15, 4)
+  limitAmount     Decimal? @db.Decimal(15, 4)
+
+  isManual    Boolean @default(false)
+  isActive    Boolean @default(true)
+  includeInNetWorth Boolean @default(true)
+
+  transactions Transaction[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@map("financial_accounts")
+}
+
+// ──────────────────────────────────────
+// TRANSACTIONS & RECEIPTS
+// ──────────────────────────────────────
+
+model Transaction {
+  id        String @id @default(uuid())
+  userId    String
+  user      User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accountId String?
+  account   FinancialAccount? @relation(fields: [accountId], references: [id])
+  receiptId String?
+  receipt   Receipt? @relation(fields: [receiptId], references: [id])
+
+  plaidTransactionId String? @unique
+
+  type        TransactionType
+  category    TransactionCategory @default(OTHER)
+  merchant    String?
+  description String?
+  amount      Decimal   @db.Decimal(15, 4)
+  currency    Currency  @default(USD)
+  date        DateTime
+  pending     Boolean   @default(false)
+
+  // AI categorization confidence
+  categoryConfidence Float? // 0–1
+
+  // Recurring detection
+  isRecurring    Boolean  @default(false)
+  recurrenceId   String?  // groups recurring transactions
+
+  // User overrides
+  userCategory   TransactionCategory?
+  userMerchant   String?
+  notes          String?
+  isSplit        Boolean @default(false)
+  splitParentId  String?
+
+  // Budget linkage
+  budgetItems BudgetItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, date])
+  @@index([userId, category])
+  @@index([accountId])
+  @@map("transactions")
+}
+
+model Receipt {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  imageUrl     String          // Supabase Storage
+  rawOcrText   String?
+  merchant     String?
+  date         DateTime?
+  subtotal     Decimal?  @db.Decimal(15, 4)
+  tax          Decimal?  @db.Decimal(15, 4)
+  tip          Decimal?  @db.Decimal(15, 4)
+  total        Decimal?  @db.Decimal(15, 4)
+  currency     Currency  @default(USD)
+  lineItems    Json?     // { description, quantity, unitPrice, total }[]
+  isProcessed  Boolean   @default(false)
+
+  transactions Transaction[]
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@map("receipts")
+}
+
+// ──────────────────────────────────────
+// BUDGETING
+// ──────────────────────────────────────
+
+model Budget {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name      String
+  period    String    @default("monthly")  // weekly | monthly | yearly
+  startDate DateTime
+  endDate   DateTime?
+  currency  Currency  @default(USD)
+  isActive  Boolean   @default(true)
+
+  categories BudgetCategory[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@map("budgets")
+}
+
+model BudgetCategory {
+  id       String @id @default(uuid())
+  budgetId String
+  budget   Budget @relation(fields: [budgetId], references: [id], onDelete: Cascade)
+
+  category    TransactionCategory
+  limitAmount Decimal   @db.Decimal(15, 4)
+  rollover    Boolean   @default(false)   // unused amount rolls to next period
+  alertAt     Float     @default(0.8)    // alert when 80% spent
+
+  items BudgetItem[]
+
+  @@unique([budgetId, category])
+  @@map("budget_categories")
+}
+
+model BudgetItem {
+  id             String         @id @default(uuid())
+  budgetCategoryId String
+  budgetCategory BudgetCategory @relation(fields: [budgetCategoryId], references: [id], onDelete: Cascade)
+  transactionId  String
+  transaction    Transaction    @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+
+  amount Decimal @db.Decimal(15, 4)
+
+  @@unique([budgetCategoryId, transactionId])
+  @@map("budget_items")
+}
+
+// ──────────────────────────────────────
+// INVESTMENT PORTFOLIO
+// ──────────────────────────────────────
+
+model Portfolio {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name        String
+  description String?
+  currency    Currency @default(USD)
+  isDefault   Boolean  @default(false)
+
+  // Target allocation (JSON: { assetClass: percent }[])
+  targetAllocation Json?
+
+  holdings   Holding[]
+  benchmarks PortfolioBenchmark[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@map("portfolios")
+}
+
+model Holding {
+  id          String    @id @default(uuid())
+  portfolioId String
+  portfolio   Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+
+  ticker      String
+  name        String?
+  assetClass  AssetClass @default(STOCK)
+  sector      String?
+  geography   String?    // US | CA | INTL | EM
+
+  // Position
+  shares      Decimal  @db.Decimal(20, 8)
+  avgCost     Decimal  @db.Decimal(15, 4)  // per share, cost basis
+  currency    Currency @default(USD)
+
+  // DRIP
+  isDrip      Boolean  @default(false)
+  dividendYield Float? // annualized %
+
+  // Cached live data (refreshed periodically)
+  currentPrice  Decimal? @db.Decimal(15, 4)
+  priceUpdatedAt DateTime?
+
+  transactions HoldingTransaction[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([portfolioId, ticker])
+  @@index([portfolioId])
+  @@map("holdings")
+}
+
+model HoldingTransaction {
+  id        String  @id @default(uuid())
+  holdingId String
+  holding   Holding @relation(fields: [holdingId], references: [id], onDelete: Cascade)
+
+  type      String   // BUY | SELL | DIVIDEND | SPLIT | DRIP
+  shares    Decimal  @db.Decimal(20, 8)
+  price     Decimal  @db.Decimal(15, 4)
+  fees      Decimal  @db.Decimal(15, 4) @default(0)
+  date      DateTime
+  notes     String?
+
+  createdAt DateTime @default(now())
+
+  @@index([holdingId, date])
+  @@map("holding_transactions")
+}
+
+model PortfolioBenchmark {
+  id          String    @id @default(uuid())
+  portfolioId String
+  portfolio   Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+
+  ticker  String   // ^GSPC | ^GSPTSE | custom ticker
+  label   String   // "S&P 500"
+  weight  Float    @default(1.0)
+
+  @@map("portfolio_benchmarks")
+}
+
+// ──────────────────────────────────────
+// WATCHLIST
+// ──────────────────────────────────────
+
+model Watchlist {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name    String
+  isDefault Boolean @default(false)
+
+  items WatchlistItem[]
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@map("watchlists")
+}
+
+model WatchlistItem {
+  id          String    @id @default(uuid())
+  watchlistId String
+  watchlist   Watchlist @relation(fields: [watchlistId], references: [id], onDelete: Cascade)
+
+  ticker     String
+  name       String?
+  assetClass AssetClass @default(STOCK)
+  notes      String?
+
+  priceAlerts PriceAlert[]
+
+  addedAt DateTime @default(now())
+
+  @@unique([watchlistId, ticker])
+  @@map("watchlist_items")
+}
+
+model PriceAlert {
+  id              String        @id @default(uuid())
+  userId          String
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  watchlistItemId String?
+  watchlistItem   WatchlistItem? @relation(fields: [watchlistItemId], references: [id])
+
+  ticker      String
+  alertType   AlertType
+  targetValue Float       // price or percent
+  direction   String      // above | below
+  isActive    Boolean     @default(true)
+  triggeredAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, isActive])
+  @@map("price_alerts")
+}
+
+// ──────────────────────────────────────
+// GOALS & DEBT
+// ──────────────────────────────────────
+
+model SavingsGoal {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name           String
+  type           GoalType
+  targetAmount   Decimal   @db.Decimal(15, 4)
+  currentAmount  Decimal   @db.Decimal(15, 4) @default(0)
+  currency       Currency  @default(USD)
+  targetDate     DateTime?
+  monthlyContrib Decimal?  @db.Decimal(15, 4)
+  isCompleted    Boolean   @default(false)
+  completedAt    DateTime?
+  notes          String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@map("savings_goals")
+}
+
+model Debt {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name          String
+  type          DebtType
+  lender        String?
+  originalAmount Decimal  @db.Decimal(15, 4)
+  currentBalance Decimal  @db.Decimal(15, 4)
+  interestRate   Float    // APR %
+  minimumPayment Decimal  @db.Decimal(15, 4)
+  currency       Currency @default(USD)
+  dueDate        Int?     // day of month
+  isActive       Boolean  @default(true)
+  paidOffAt      DateTime?
+
+  payments DebtPayment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@map("debts")
+}
+
+model DebtPayment {
+  id     String @id @default(uuid())
+  debtId String
+  debt   Debt   @relation(fields: [debtId], references: [id], onDelete: Cascade)
+
+  amount    Decimal  @db.Decimal(15, 4)
+  principal Decimal? @db.Decimal(15, 4)
+  interest  Decimal? @db.Decimal(15, 4)
+  date      DateTime
+
+  createdAt DateTime @default(now())
+
+  @@index([debtId, date])
+  @@map("debt_payments")
+}
+
+// ──────────────────────────────────────
+// TAX PROFILES
+// ──────────────────────────────────────
+
+model TaxProfile {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  taxYear       Int
+  country       String  @default("US")  // US | CA
+  province      String? // CA provinces
+  filingStatus  String  @default("single")  // single | married_filing_jointly | married_filing_separately | head_of_household
+  grossIncome   Decimal? @db.Decimal(15, 4)
+  deductions    Json?    // { type, amount }[]
+  taxCredits    Json?    // { type, amount }[]
+
+  // Registered accounts
+  tfsaRoom      Decimal? @db.Decimal(15, 4)
+  tfsaContrib   Decimal? @db.Decimal(15, 4)
+  rrspRoom      Decimal? @db.Decimal(15, 4)
+  rrspContrib   Decimal? @db.Decimal(15, 4)
+  ira401kContrib Decimal? @db.Decimal(15, 4)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, taxYear])
+  @@map("tax_profiles")
+}
+
+// ──────────────────────────────────────
+// AI ASSISTANT
+// ──────────────────────────────────────
+
+model AIConversation {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  title    String?
+  context  String  @default("general")  // general | math | finance | portfolio | budget
+  messages AIMessage[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, updatedAt])
+  @@map("ai_conversations")
+}
+
+model AIMessage {
+  id             String         @id @default(uuid())
+  conversationId String
+  conversation   AIConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  role     String   // user | assistant
+  content  String   // text content
+  tokens   Int?     // tokens used
+  model    String?  // claude-sonnet-4-5 | etc.
+  metadata Json?    // charts, attachments, function calls
+
+  createdAt DateTime @default(now())
+
+  @@index([conversationId, createdAt])
+  @@map("ai_messages")
+}
+
+// ──────────────────────────────────────
+// NOTIFICATIONS
+// ──────────────────────────────────────
+
+model Notification {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  type       String   // bill_reminder | price_alert | budget_alert | insight | system
+  title      String
+  body       String
+  channel    NotificationChannel @default(IN_APP)
+  metadata   Json?
+  isRead     Boolean  @default(false)
+  readAt     DateTime?
+  scheduledAt DateTime?
+  sentAt     DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, isRead])
+  @@index([userId, createdAt])
+  @@map("notifications")
+}
+
+// ──────────────────────────────────────
+// BILL REMINDERS
+// ──────────────────────────────────────
+
+model BillReminder {
+  id     String @id @default(uuid())
+  userId String
+
+  name        String
+  amount      Decimal   @db.Decimal(15, 4)
+  currency    Currency  @default(USD)
+  dueDay      Int       // day of month (1–31)
+  category    TransactionCategory @default(SUBSCRIPTIONS)
+  isActive    Boolean   @default(true)
+  reminderDaysBefore Int @default(3)
+  lastTriggered DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@map("bill_reminders")
+}
