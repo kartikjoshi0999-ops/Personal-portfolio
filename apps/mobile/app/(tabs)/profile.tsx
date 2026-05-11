@@ -1,6 +1,14 @@
-import { ScrollView, View, Text, StyleSheet, TouchableOpacity, Switch } from 'react-native';
+import { ScrollView, View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import * as FileSystem from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
+import { useState } from 'react';
+
+const API_URL = process.env.EXPO_PUBLIC_API_URL ?? 'https://solvesphere.ai';
+
+type ExportFormat = 'json' | 'csv';
+type ExportType = 'all' | 'transactions' | 'math' | 'portfolio' | 'goals';
 
 const SETTINGS = [
   { icon: 'person-outline' as const, label: 'Edit Profile', sub: 'Name, email, avatar' },
@@ -9,11 +17,54 @@ const SETTINGS = [
   { icon: 'notifications-outline' as const, label: 'Notifications', sub: 'Bill reminders, alerts' },
   { icon: 'shield-checkmark-outline' as const, label: 'Security', sub: 'Biometric lock, password' },
   { icon: 'globe-outline' as const, label: 'Currency & Region', sub: 'USD · United States' },
-  { icon: 'download-outline' as const, label: 'Export My Data', sub: 'GDPR / PIPEDA compliant' },
   { icon: 'trash-outline' as const, label: 'Delete Account', sub: 'Permanently remove all data', danger: true },
 ];
 
 export default function ProfileScreen() {
+  const [exporting, setExporting] = useState<string | null>(null);
+
+  const handleExport = async (type: ExportType, format: ExportFormat) => {
+    const key = `${type}-${format}`;
+    setExporting(key);
+    try {
+      const url = `${API_URL}/api/export?type=${type}&format=${format}`;
+      const timestamp = new Date().toISOString().slice(0, 10);
+      const filename = `solvesphere-${type}-${timestamp}.${format}`;
+      const dest = FileSystem.documentDirectory + filename;
+
+      const { uri } = await FileSystem.downloadAsync(url, dest);
+      const canShare = await Sharing.isAvailableAsync();
+      if (canShare) {
+        await Sharing.shareAsync(uri, {
+          mimeType: format === 'csv' ? 'text/csv' : 'application/json',
+          dialogTitle: `Save ${filename}`,
+          UTI: format === 'csv' ? 'public.comma-separated-values-text' : 'public.json',
+        });
+      } else {
+        Alert.alert('Saved', `File saved to: ${uri}`);
+      }
+    } catch (err: any) {
+      Alert.alert('Export failed', err.message ?? 'Please try again');
+    } finally {
+      setExporting(null);
+    }
+  };
+
+  const showExportSheet = () => {
+    Alert.alert(
+      'Export My Data',
+      'Choose what to export',
+      [
+        { text: 'All Data (JSON)', onPress: () => handleExport('all', 'json') },
+        { text: 'Transactions (CSV)', onPress: () => handleExport('transactions', 'csv') },
+        { text: 'Math History (CSV)', onPress: () => handleExport('math', 'csv') },
+        { text: 'Portfolio (CSV)', onPress: () => handleExport('portfolio', 'csv') },
+        { text: 'Goals & Debts (CSV)', onPress: () => handleExport('goals', 'csv') },
+        { text: 'Cancel', style: 'cancel' },
+      ]
+    );
+  };
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
@@ -52,6 +103,29 @@ export default function ProfileScreen() {
           </View>
           <TouchableOpacity style={styles.upgradeBtn}>
             <Text style={styles.upgradeBtnText}>Upgrade to Pro — $6.99/mo</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Export card */}
+        <View style={[styles.settingsList, { marginBottom: 12 }]}>
+          <TouchableOpacity
+            onPress={showExportSheet}
+            disabled={!!exporting}
+            style={styles.settingRow}
+          >
+            <View style={[styles.settingIcon, { backgroundColor: '#eff6ff' }]}>
+              {exporting
+                ? <ActivityIndicator size="small" color="#2563eb" />
+                : <Ionicons name="download-outline" size={18} color="#2563eb" />
+              }
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.settingLabel}>Export My Data</Text>
+              <Text style={styles.settingSub}>
+                {exporting ? 'Preparing download…' : 'JSON or CSV · GDPR / PIPEDA compliant'}
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
           </TouchableOpacity>
         </View>
 

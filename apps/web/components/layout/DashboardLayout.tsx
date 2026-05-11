@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
-  Home, Camera, TrendingUp, Wallet, BarChart2, Calculator, MessageCircle, User, Sun, Moon
+  Home, Camera, TrendingUp, Wallet, BarChart2, Calculator, MessageCircle, User, Sun, Moon, Download
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
 
@@ -51,6 +51,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </nav>
 
         <div className="border-t p-3 space-y-1">
+          <Link
+            href="/export"
+            className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${pathname.startsWith('/export') ? 'bg-brand-500 text-white' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}
+          >
+            <Download className="h-4 w-4 flex-shrink-0" />
+            Export Data
+          </Link>
           <button
             onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
             className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
